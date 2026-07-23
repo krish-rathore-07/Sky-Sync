@@ -20,3 +20,20 @@ All notable changes to **SkySync** will be documented in this file.
 - Backend request lifecycle
 
 ---
+
+## Day 2 - Database Configuration
+
+### Added
+- Created PostgreSQL database `skysync_db`
+- Configured Spring Boot datasource
+- Configured Hibernate and JPA
+- Successfully connected Spring Boot to PostgreSQL
+
+### Learned
+- JDBC
+- Hibernate
+- Spring Data JPA
+- Datasource configuration
+- Database connection flow
+
+---
