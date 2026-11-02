@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, EyeOff, Lock, Mail, User, ArrowRight } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, User, ArrowRight, CheckCircle2, Circle } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
@@ -7,6 +7,8 @@ import ThemeToggle from '../../components/common/ThemeToggle'
 import skySyncLogo from '../../assets/logo/skysync-logo.png'
 import skySyncIcon from '../../assets/logo/skysync-icon.png'
 import { registerUser } from '../../services/authservice.js'
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 function Register() {
   const navigate = useNavigate()
@@ -23,6 +25,48 @@ function Register() {
   const [loading, setLoading] = useState(false)
 
   const [error, setError] = useState('')
+
+  // Keep these rules aligned with the backend password validation.
+  const passwordChecks = [
+    {
+      label: 'At least 8 characters',
+      passed: formData.password.length >= 8 && formData.password.length <= 64,
+    },
+    {
+      label: 'At least one uppercase letter (A-Z)',
+      passed: /[A-Z]/.test(formData.password),
+    },
+    {
+      label: 'At least one lowercase letter (a-z)',
+      passed: /[a-z]/.test(formData.password),
+    },
+    {
+      label: 'At least one number (0-9)',
+      passed: /\d/.test(formData.password),
+    },
+    {
+      label: 'At least one special character (@$!%*?&)',
+      passed:
+        /[@$!%*?&]/.test(formData.password) &&
+        !/[^A-Za-z\d@$!%*?&]/.test(formData.password),
+    },
+  ]
+
+  const passedPasswordChecks = passwordChecks.filter((check) => check.passed).length
+  const isPasswordStrong = passedPasswordChecks === passwordChecks.length
+  const emailValue = formData.email.trim()
+  const isEmailValid = emailValue.length > 0 && EMAIL_REGEX.test(emailValue)
+
+  const passwordsMatch =
+    formData.confirmPassword.length > 0 &&
+    formData.password === formData.confirmPassword
+
+  const passwordStrengthLabel =
+    passedPasswordChecks <= 2
+      ? 'Weak'
+      : passedPasswordChecks <= 4
+        ? 'Almost there'
+        : 'Strong'
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -55,9 +99,7 @@ function Register() {
       return 'Please enter your email.'
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-    if (!emailRegex.test(email)) {
+    if (!EMAIL_REGEX.test(email)) {
       return 'Please enter a valid email address.'
     }
 
@@ -65,8 +107,28 @@ function Register() {
       return 'Please enter a password.'
     }
 
-    if (password.length < 6) {
-      return 'Password must contain at least 6 characters.'
+    if (password.length < 8 || password.length > 64) {
+      return 'Password must contain between 8 and 64 characters.'
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      return 'Password must contain at least one uppercase letter.'
+    }
+
+    if (!/[a-z]/.test(password)) {
+      return 'Password must contain at least one lowercase letter.'
+    }
+
+    if (!/\d/.test(password)) {
+      return 'Password must contain at least one number.'
+    }
+
+    if (!/[@$!%*?&]/.test(password)) {
+      return 'Password must contain at least one special character (@$!%*?&).'
+    }
+
+    if (/[^A-Za-z\d@$!%*?&]/.test(password)) {
+      return 'Password contains an unsupported character. Use letters, numbers, and @$!%*?&.'
     }
 
     if (!confirmPassword) {
@@ -93,6 +155,8 @@ function Register() {
       return
     }
 
+    const loadingToastId = toast.loading('Creating your SkySync account...')
+
     try {
       setLoading(true)
 
@@ -102,7 +166,9 @@ function Register() {
         password: formData.password,
       })
 
-      toast.success('Account created successfully!')
+      toast.success('Account created successfully!', {
+        id: loadingToastId,
+      })
 
       setFormData({
         name: '',
@@ -129,7 +195,8 @@ function Register() {
       toast.error(
         typeof message === 'string'
           ? message
-          : 'Registration failed.'
+          : 'Registration failed.',
+        { id: loadingToastId }
       )
     } finally {
       setLoading(false)
@@ -137,7 +204,7 @@ function Register() {
   }
 
   return (
-    <div className="min-h-screen overflow-hidden bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-white">
+    <div className="relative min-h-dvh w-full overflow-x-hidden bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-white">
       {/* Background decoration */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-32 -top-32 h-72 w-72 rounded-full bg-sky-400/10 blur-3xl dark:bg-sky-500/10" />
@@ -148,7 +215,7 @@ function Register() {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
+      <header className="relative z-10 flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:min-h-20 sm:px-7 sm:py-5 lg:px-10">
         {/* Logo */}
         <Link
           to="/login"
@@ -158,7 +225,7 @@ function Register() {
           <img
             src={skySyncLogo}
             alt="SkySync"
-            className="h-9 w-auto object-contain transition-transform duration-300 group-hover:scale-[1.03] sm:h-10"
+            className="h-8 w-auto max-w-[min(62vw,210px)] object-contain object-left transition-transform duration-300 group-hover:scale-[1.03] sm:h-10 sm:max-w-[230px]"
           />
         </Link>
 
@@ -167,28 +234,28 @@ function Register() {
       </header>
 
       {/* Main */}
-      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center justify-center px-4 pb-10 pt-4 sm:px-6 sm:pb-14">
-        <div className="w-full max-w-md">
+      <main className="relative z-10 flex min-h-[calc(100dvh-64px)] w-full items-start justify-center px-3 pb-8 pt-3 sm:min-h-[calc(100dvh-80px)] sm:px-6 sm:pb-12 sm:pt-5 lg:items-center">
+        <div className="w-full min-w-0 max-w-md">
           {/* Card */}
-          <div className="rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-2xl shadow-slate-200/40 backdrop-blur-xl transition-colors duration-300 dark:border-slate-800/80 dark:bg-slate-900/90 dark:shadow-black/20 sm:p-8">
+          <div className="w-full min-w-0 rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-xl shadow-slate-200/40 backdrop-blur-xl transition-colors duration-300 sm:rounded-3xl sm:p-6 md:p-8 dark:border-slate-800/80 dark:bg-slate-900/95 dark:shadow-black/20">
             {/* Icon */}
-            <div className="mb-6 flex justify-center">
+            <div className="mb-4 flex justify-center sm:mb-6">
               <div className="relative">
                 <div className="absolute inset-0 rounded-2xl bg-sky-500/20 blur-xl" />
 
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50 shadow-lg shadow-sky-500/10 dark:border-sky-900/50 dark:bg-sky-950/50">
+                <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50 shadow-lg shadow-sky-500/10 sm:h-16 sm:w-16 dark:border-sky-900/50 dark:bg-sky-950/50">
                   <img
                     src={skySyncIcon}
                     alt=""
-                    className="h-10 w-10 object-contain"
+                    className="h-9 w-9 object-contain sm:h-10 sm:w-10"
                   />
                 </div>
               </div>
             </div>
 
             {/* Heading */}
-            <div className="mb-7 text-center">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+            <div className="mb-5 text-center sm:mb-7">
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl dark:text-white md:text-3xl">
                 Create your account
               </h1>
 
@@ -232,16 +299,18 @@ function Register() {
                     name="name"
                     type="text"
                     autoComplete="name"
+                    autoCapitalize="words"
+                    maxLength={80}
                     placeholder="Enter your full name"
                     value={formData.name}
                     onChange={handleChange}
                     disabled={loading}
                     className="
-                      h-12 w-full rounded-xl
+                      min-h-12 w-full min-w-0 rounded-xl
                       border border-slate-200
                       bg-slate-50
                       pl-11 pr-4
-                      text-sm text-slate-900
+                      text-base text-slate-900 sm:text-sm
                       outline-none
                       transition-all duration-200
                       placeholder:text-slate-400
@@ -282,17 +351,22 @@ function Register() {
                     id="email"
                     name="email"
                     type="email"
+                    inputMode="email"
                     autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-invalid={emailValue.length > 0 && !isEmailValid}
+                    aria-describedby="email-feedback"
                     placeholder="you@example.com"
                     value={formData.email}
                     onChange={handleChange}
                     disabled={loading}
                     className="
-                      h-12 w-full rounded-xl
+                      min-h-12 w-full min-w-0 rounded-xl
                       border border-slate-200
                       bg-slate-50
                       pl-11 pr-4
-                      text-sm text-slate-900
+                      text-base text-slate-900 sm:text-sm
                       outline-none
                       transition-all duration-200
                       placeholder:text-slate-400
@@ -312,6 +386,27 @@ function Register() {
                     "
                   />
                 </div>
+
+                {emailValue.length > 0 && (
+                  <p
+                    id="email-feedback"
+                    className={`mt-2 flex items-center gap-1.5 px-1 text-xs ${
+                      isEmailValid
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-red-500 dark:text-red-400'
+                    }`}
+                    role="status"
+                  >
+                    {isEmailValid ? (
+                      <>
+                        <CheckCircle2 size={13} />
+                        Valid email format
+                      </>
+                    ) : (
+                      'Enter a valid email address, e.g. name@example.com.'
+                    )}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
@@ -334,16 +429,18 @@ function Register() {
                     name="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password"
+                    maxLength={64}
+                    spellCheck={false}
                     placeholder="Create a password"
                     value={formData.password}
                     onChange={handleChange}
                     disabled={loading}
                     className="
-                      h-12 w-full rounded-xl
+                      min-h-12 w-full min-w-0 rounded-xl
                       border border-slate-200
                       bg-slate-50
                       pl-11 pr-12
-                      text-sm text-slate-900
+                      text-base text-slate-900 sm:text-sm
                       outline-none
                       transition-all duration-200
                       placeholder:text-slate-400
@@ -376,11 +473,12 @@ function Register() {
                     }
                     className="
                       absolute right-3 top-1/2
-                      flex h-8 w-8
+                      flex h-10 w-10
                       -translate-y-1/2
                       items-center justify-center
                       rounded-lg
                       text-slate-400
+                      focus:outline-none focus:ring-2 focus:ring-sky-500/40
                       transition
                       hover:bg-slate-200
                       hover:text-slate-600
@@ -396,6 +494,61 @@ function Register() {
                     )}
                   </button>
                 </div>
+
+                {/* Live password strength and requirements */}
+                {formData.password.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-950/70" aria-live="polite">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Password strength
+                      </span>
+                      <span
+                        className={`text-xs font-semibold ${
+                          isPasswordStrong
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : passedPasswordChecks >= 3
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-red-500 dark:text-red-400'
+                        }`}
+                      >
+                        {passwordStrengthLabel}
+                      </span>
+                    </div>
+
+                    <div className="mb-3 grid grid-cols-5 gap-1.5" aria-label={`${passedPasswordChecks} of 5 password requirements met`}>
+                      {passwordChecks.map((check) => (
+                        <div
+                          key={check.label}
+                          className={`h-1.5 rounded-full ${
+                            check.passed
+                              ? 'bg-emerald-500'
+                              : 'bg-slate-200 dark:bg-slate-700'
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {passwordChecks.map((check) => (
+                        <li
+                          key={check.label}
+                          className={`flex items-center gap-2 text-xs ${
+                            check.passed
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-slate-500 dark:text-slate-400'
+                          }`}
+                        >
+                          {check.passed ? (
+                            <CheckCircle2 size={14} className="shrink-0" />
+                          ) : (
+                            <Circle size={14} className="shrink-0" />
+                          )}
+                          {check.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               {/* Confirm password */}
@@ -422,16 +575,18 @@ function Register() {
                         : 'password'
                     }
                     autoComplete="new-password"
+                    maxLength={64}
+                    spellCheck={false}
                     placeholder="Confirm your password"
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     disabled={loading}
                     className="
-                      h-12 w-full rounded-xl
+                      min-h-12 w-full min-w-0 rounded-xl
                       border border-slate-200
                       bg-slate-50
                       pl-11 pr-12
-                      text-sm text-slate-900
+                      text-base text-slate-900 sm:text-sm
                       outline-none
                       transition-all duration-200
                       placeholder:text-slate-400
@@ -466,11 +621,12 @@ function Register() {
                     }
                     className="
                       absolute right-3 top-1/2
-                      flex h-8 w-8
+                      flex h-10 w-10
                       -translate-y-1/2
                       items-center justify-center
                       rounded-lg
                       text-slate-400
+                      focus:outline-none focus:ring-2 focus:ring-sky-500/40
                       transition
                       hover:bg-slate-200
                       hover:text-slate-600
@@ -488,17 +644,28 @@ function Register() {
                 </div>
               </div>
 
-              {/* Password hint */}
-              <p className="px-1 text-xs text-slate-500 dark:text-slate-500">
-                Use at least 6 characters for your password.
-              </p>
+              {/* Confirm password feedback */}
+              {formData.confirmPassword.length > 0 && (
+                <p
+                  className={`-mt-2 px-1 text-xs ${
+                    passwordsMatch
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-500 dark:text-red-400'
+                  }`}
+                  role="status"
+                >
+                  {passwordsMatch
+                    ? 'Passwords match.'
+                    : 'Passwords do not match.'}
+                </p>
+              )}
 
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !isEmailValid || !isPasswordStrong || !passwordsMatch}
                 className="
-                  group mt-2 flex h-12 w-full
+                  group mt-2 flex min-h-12 w-full
                   items-center justify-center gap-2
                   rounded-xl
                   bg-sky-500
@@ -538,7 +705,7 @@ function Register() {
             </form>
 
             {/* Divider */}
-            <div className="my-6 flex items-center gap-3">
+            <div className="my-5 flex items-center gap-3 sm:my-6">
               <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
 
               <span className="text-xs font-medium text-slate-400">
@@ -555,7 +722,7 @@ function Register() {
                 toast('Google sign-up will be available soon.')
               }
               className="
-                flex h-12 w-full
+                flex min-h-12 w-full
                 items-center justify-center gap-3
                 rounded-xl
                 border border-slate-200
@@ -580,7 +747,7 @@ function Register() {
             </button>
 
             {/* Login */}
-            <p className="mt-7 text-center text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-6 px-1 text-center text-sm leading-6 text-slate-500 sm:mt-7 dark:text-slate-400">
               Already have an account?{' '}
               <Link
                 to="/login"
@@ -599,7 +766,7 @@ function Register() {
           </div>
 
           {/* Footer */}
-          <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-600">
+          <p className="mx-auto mt-5 max-w-md px-2 text-center text-[11px] leading-5 text-slate-400 sm:mt-6 sm:text-xs dark:text-slate-600">
             By creating an account, you agree to use SkySync responsibly
             and securely.
           </p>

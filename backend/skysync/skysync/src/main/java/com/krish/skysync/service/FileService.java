@@ -13,5 +13,7 @@ public interface FileService {
 
     void deleteFile(Long fileId, Long userId);
 
+    void deleteAllFilesByUserId(Long userId);
+
     FileResponse getFile(Long fileId, Long userId);
 }

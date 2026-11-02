@@ -113,4 +113,57 @@ public class FileServiceImpl implements FileService {
                 file.getFileSize()
         );
     }
+
+    @Override
+    public void deleteAllFilesByUserId(Long userId) {
+
+        List<File> files = fileRepository.findByUserId(userId);
+
+        for (File file : files) {
+            try {
+                Map<?, ?> result = cloudinary.uploader().destroy(
+                        file.getPublicId(),
+                        ObjectUtils.asMap(
+                                "resource_type", getResourceType(file.getContentType())
+                        )
+                );
+
+                Object deletionResult = result.get("result");
+
+                if (!"ok".equals(deletionResult)
+                        && !"not found".equals(deletionResult)) {
+                    throw new RuntimeException(
+                            "Cloudinary could not delete file: "
+                                    + file.getOriginalFileName()
+                    );
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(
+                        "Failed to delete file: "
+                                + file.getOriginalFileName(),
+                        e
+                );
+            }
+        }
+
+        fileRepository.deleteAll(files);
+    }
+
+    private String getResourceType(String contentType) {
+
+        if (contentType == null) {
+            return "raw";
+        }
+
+        if (contentType.startsWith("image/")) {
+            return "image";
+        }
+
+        if (contentType.startsWith("video/")) {
+            return "video";
+        }
+
+        return "raw";
+    }
 }

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
-  CheckCircle2,
-  Clock3,
   Download,
   FileArchive,
   FileImage,
@@ -16,7 +14,6 @@ import {
   Search,
   Share2,
   Trash2,
-  UploadCloud,
   X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -42,15 +39,16 @@ function Dashboard() {
 
   const [selectedFile, setSelectedFile] = useState(null)
   const [deleting, setDeleting] = useState(false)
-const [shareFile, setShareFile] = useState(null)
+  const [shareFile, setShareFile] = useState(null)
   // --------------------------------------------------
   // Fetch files
   // --------------------------------------------------
 
-  const fetchFiles = async (showRefresh = false) => {
+  const fetchFiles = async (showRefresh = false, notify = false) => {
     try {
       if (showRefresh) {
         setRefreshing(true)
+        if (files.length === 0) setLoading(true)
       } else {
         setLoading(true)
       }
@@ -70,16 +68,18 @@ const [shareFile, setShareFile] = useState(null)
               ? response.data.files
               : []
 
-      console.log('Dashboard files API response:', data)
       setFiles(data)
+      if (notify) toast.success('Your files are up to date.')
     } catch (err) {
       console.error('Failed to fetch files:', err)
 
+      const responseMessage = err?.response?.data
       const message =
-        err?.response?.data?.message ||
+        (typeof responseMessage === 'string' ? responseMessage : responseMessage?.message) ||
         'Unable to load your files.'
 
       setError(message)
+      if (notify) toast.error(message)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -89,6 +89,27 @@ const [shareFile, setShareFile] = useState(null)
   useEffect(() => {
     fetchFiles()
   }, [])
+
+  // Keep the page from scrolling behind the file-actions dialog.
+  useEffect(() => {
+    if (!selectedFile) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !deleting) {
+        setSelectedFile(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedFile, deleting])
 
   // --------------------------------------------------
   // File helpers
@@ -145,7 +166,9 @@ const [shareFile, setShareFile] = useState(null)
   }
 
   const formatFileSize = (bytes) => {
-    if (!bytes || Number(bytes) <= 0) {
+    const numericBytes = Number(bytes)
+
+    if (!Number.isFinite(numericBytes) || numericBytes <= 0) {
       return '0 B'
     }
 
@@ -161,7 +184,7 @@ const [shareFile, setShareFile] = useState(null)
     )
 
     const value =
-      Number(bytes) /
+      numericBytes /
       Math.pow(1024, safeIndex)
 
     return `${value.toFixed(
@@ -297,7 +320,7 @@ const [shareFile, setShareFile] = useState(null)
       label: 'Shared Files',
       value: '—',
       icon: Share2,
-      description: 'Sharing system coming next',
+      description: 'Manage your shared links',
     },
   ]
 
@@ -334,8 +357,9 @@ const [shareFile, setShareFile] = useState(null)
     } catch (err) {
       console.error('Failed to delete file:', err)
 
+      const responseMessage = err?.response?.data
       const message =
-        err?.response?.data?.message ||
+        (typeof responseMessage === 'string' ? responseMessage : responseMessage?.message) ||
         'Unable to delete the file.'
 
       toast.error(message)
@@ -358,11 +382,9 @@ const [shareFile, setShareFile] = useState(null)
       return
     }
 
-    window.open(
-      url,
-      '_blank',
-      'noopener,noreferrer'
-    )
+    // Open directly from the user's click. Browsers may return null when
+    // noopener is enabled even if the new tab opened successfully.
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   // --------------------------------------------------
@@ -370,8 +392,8 @@ const [shareFile, setShareFile] = useState(null)
   // --------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-white">
-      <div className="flex min-h-screen">
+    <div className="min-h-screen w-full overflow-x-clip bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-white">
+      <div className="flex min-h-screen w-full min-w-0">
         {/* Sidebar */}
         <Sidebar
           mobileOpen={mobileSidebarOpen}
@@ -390,8 +412,8 @@ const [shareFile, setShareFile] = useState(null)
             onSearchChange={setSearchValue}
           />
 
-          <main className="px-4 py-6 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl">
+          <main className="w-full min-w-0 px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
+            <div className="mx-auto w-full max-w-7xl min-w-0">
               {/* -------------------------------- */}
               {/* Welcome */}
               {/* -------------------------------- */}
@@ -420,7 +442,7 @@ const [shareFile, setShareFile] = useState(null)
                   <button
                     type="button"
                     onClick={() =>
-                      fetchFiles(true)
+                      fetchFiles(true, true)
                     }
                     disabled={refreshing}
                     className="
@@ -465,7 +487,7 @@ const [shareFile, setShareFile] = useState(null)
               {/* Stats */}
               {/* -------------------------------- */}
 
-              <section className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <section className="mb-7 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
                 {stats.map((stat) => {
                   const Icon = stat.icon
 
@@ -555,39 +577,6 @@ const [shareFile, setShareFile] = useState(null)
                     </p>
                   </div>
 
-                  {/* Mobile search */}
-                  <div className="relative sm:hidden">
-                    <Search
-                      size={17}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-
-                    <input
-                      type="search"
-                      value={searchValue}
-                      onChange={(event) =>
-                        setSearchValue(
-                          event.target.value
-                        )
-                      }
-                      placeholder="Search files..."
-                      className="
-                        h-10 w-full rounded-xl
-                        border border-slate-200
-                        bg-white
-                        pl-9 pr-3
-                        text-sm
-                        outline-none
-                        focus:border-sky-400
-                        focus:ring-4
-                        focus:ring-sky-500/10
-                        dark:border-slate-800
-                        dark:bg-slate-900
-                        dark:text-white
-                        dark:placeholder:text-slate-600
-                      "
-                    />
-                  </div>
                 </div>
 
                 {/* Error */}
@@ -613,7 +602,7 @@ const [shareFile, setShareFile] = useState(null)
                     <button
                       type="button"
                       onClick={() =>
-                        fetchFiles(true)
+                        fetchFiles(true, true)
                       }
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-red-500 px-3 text-xs font-semibold text-white transition hover:bg-red-600"
                     >
@@ -626,7 +615,7 @@ const [shareFile, setShareFile] = useState(null)
                 {/* Loading */}
                 {loading && (
                   <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                    <div className="hidden md:block">
+                    <div className="hidden lg:block">
                       <div className="grid grid-cols-[minmax(0,2fr)_120px_150px_50px] gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
                         {[
                           'file',
@@ -668,7 +657,7 @@ const [shareFile, setShareFile] = useState(null)
                     </div>
 
                     {/* Mobile skeleton */}
-                    <div className="space-y-3 p-4 md:hidden">
+                    <div className="space-y-3 p-3 sm:p-4 lg:hidden">
                       {Array.from({
                         length: 4,
                       }).map((_, index) => (
@@ -733,7 +722,7 @@ const [shareFile, setShareFile] = useState(null)
                 {!loading &&
                   !error &&
                   filteredFiles.length > 0 && (
-                    <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 md:block">
+                    <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:block">
                       {/* Header */}
                       <div className="grid grid-cols-[minmax(0,2fr)_120px_150px_50px] gap-4 border-b border-slate-200 bg-slate-50/70 px-5 py-3.5 dark:border-slate-800 dark:bg-slate-950/30">
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
@@ -851,7 +840,7 @@ const [shareFile, setShareFile] = useState(null)
                 {!loading &&
                   !error &&
                   filteredFiles.length > 0 && (
-                    <div className="space-y-3 md:hidden">
+                    <div className="space-y-3 lg:hidden">
                       {filteredFiles.map(
                         (file, index) => {
                           const Icon =
@@ -950,8 +939,8 @@ const [shareFile, setShareFile] = useState(null)
 
       {selectedFile && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={(event) => {
             if (
               event.target === event.currentTarget &&
               !deleting
@@ -960,7 +949,7 @@ const [shareFile, setShareFile] = useState(null)
             }
           }}
         >
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div role="dialog" aria-modal="true" aria-labelledby="file-actions-title" className="my-auto max-h-[calc(100vh-1.5rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100vh-2rem)]">
             {/* Modal header */}
             <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-slate-800">
               <div className="flex min-w-0 items-center gap-3">
@@ -976,7 +965,7 @@ const [shareFile, setShareFile] = useState(null)
                 </div>
 
                 <div className="min-w-0">
-                  <h3 className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                  <h3 id="file-actions-title" className="truncate text-sm font-semibold text-slate-900 dark:text-white">
                     {getFileName(
                       selectedFile
                     )}
@@ -998,7 +987,7 @@ const [shareFile, setShareFile] = useState(null)
                   setSelectedFile(null)
                 }
                 disabled={deleting}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
                 aria-label="Close"
               >
                 <X size={18} />
@@ -1006,7 +995,7 @@ const [shareFile, setShareFile] = useState(null)
             </div>
 
             {/* Actions */}
-            <div className="space-y-2 p-4">
+            <div className="space-y-2 p-3 sm:p-4">
               <button
                 type="button"
                 onClick={() => {
@@ -1089,13 +1078,11 @@ const [shareFile, setShareFile] = useState(null)
         </div>
       )}
       {shareFile && (
-  <ShareModal
-    file={shareFile}
-    onClose={() =>
-      setShareFile(null)
-    }
-  />
-)}
+        <ShareModal
+          file={shareFile}
+          onClose={() => setShareFile(null)}
+        />
+      )}
     </div>
   )
 }

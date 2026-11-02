@@ -17,5 +17,7 @@ public interface AuthService {
             ChangePasswordRequest request
     );
 
+    void deleteAccount(String email);
+
     LoginResponse googleLogin(GoogleLoginRequest request);
 }

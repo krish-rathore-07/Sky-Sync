@@ -8,6 +8,7 @@ import com.krish.skysync.entity.User;
 import com.krish.skysync.repository.UserRepository;
 import com.krish.skysync.security.JwtService;
 import com.krish.skysync.service.AuthService;
+import com.krish.skysync.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private final FileService fileService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -125,26 +127,59 @@ public class AuthServiceImpl implements AuthService {
                             new NetHttpTransport(),
                             GsonFactory.getDefaultInstance()
                     )
-                            .setAudience(Collections.singletonList(googleClientId))
+                            .setAudience(Collections.singletonList(googleClientId.trim()))
                             .build();
+
+            // ==========================================
+            // GOOGLE TOKEN VERIFICATION
+            // ==========================================
 
             GoogleIdToken idToken = verifier.verify(request.credential());
 
+            System.out.println("========== GOOGLE LOGIN DEBUG ==========");
+
+            System.out.println(
+                    "Client ID configured: " +
+                            (googleClientId != null && !googleClientId.isBlank())
+            );
+
+            System.out.println(
+                    "Credential received: " +
+                            (request.credential() != null && !request.credential().isBlank())
+            );
+
+            System.out.println(
+                    "Credential length: " +
+                            (request.credential() == null ? 0 : request.credential().length())
+            );
+
+            System.out.println("Token verified: " + (idToken != null));
+
+            System.out.println("========================================");
+
             if (idToken == null) {
                 throw new IllegalArgumentException(
-                        "Invalid Google credential. Please try again."
+                        "Google token verification failed. Please check your Google OAuth configuration."
                 );
             }
 
             payload = idToken.getPayload();
+            System.out.println("Google email verified: " + payload.getEmailVerified());
+            System.out.println("Google subject present: " + (payload.getSubject() != null));
+            System.out.println("Google email present: " + (payload.getEmail() != null));
 
         } catch (GeneralSecurityException | IOException e) {
+
             throw new IllegalArgumentException(
-                    "Unable to verify Google identity. Please try again."
+                    "Unable to verify Google identity. Please try again.",
+                    e
             );
         }
 
-        // Require a verified Google email.
+        // ==========================================
+        // VERIFY EMAIL
+        // ==========================================
+
         Boolean emailVerified = payload.getEmailVerified();
 
         if (!Boolean.TRUE.equals(emailVerified)) {
@@ -163,13 +198,15 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-        // 1. Existing Google account: log in.
+        // ==========================================
+        // EXISTING GOOGLE USER
+        // ==========================================
+
         User user = userRepository.findByGoogleSubject(googleSubject)
                 .orElse(null);
 
         if (user != null) {
 
-            // Prevent inconsistent account identity data.
             if (!user.getEmail().equalsIgnoreCase(email)) {
                 throw new IllegalArgumentException(
                         "Google account information does not match."
@@ -185,15 +222,21 @@ public class AuthServiceImpl implements AuthService {
             );
         }
 
-        // 2. Email exists but is not linked to Google: reject.
+        // ==========================================
+        // EXISTING EMAIL/PASSWORD ACCOUNT
+        // ==========================================
+
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException(
-                    "An account with this email already exists. "
-                            + "Please log in using your email and password."
+                    "An account with this email already exists. " +
+                            "Please log in using your email and password."
             );
         }
 
-        // 3. New Google account: create a SkySync user.
+        // ==========================================
+        // CREATE NEW GOOGLE USER
+        // ==========================================
+
         User newUser = User.builder()
                 .name(name == null || name.isBlank() ? email : name)
                 .email(email)
@@ -203,7 +246,10 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(newUser);
 
-        // 4. Return the same JWT response format as normal login.
+        // ==========================================
+        // GENERATE SKYSYNC JWT
+        // ==========================================
+
         String token = jwtService.generateToken(savedUser.getEmail());
 
         return new LoginResponse(
@@ -211,5 +257,20 @@ public class AuthServiceImpl implements AuthService {
                 savedUser.getName(),
                 savedUser.getEmail()
         );
+    }
+
+    @Override
+    @Transactional
+    public void deleteAccount(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new RuntimeException("User not found"));
+
+        // Delete files stored in Cloudinary and their database records.
+        fileService.deleteAllFilesByUserId(user.getId());
+
+        // Delete the user's account.
+        userRepository.delete(user);
     }
 }

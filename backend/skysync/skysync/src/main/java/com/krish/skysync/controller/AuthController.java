@@ -58,4 +58,13 @@ public class AuthController {
     ) {
         return ResponseEntity.ok(authService.googleLogin(request));
     }
+
+    @DeleteMapping("/delete-account")
+    public ResponseEntity<Void> deleteAccount(
+            Authentication authentication
+    ) {
+        authService.deleteAccount(authentication.getName());
+
+        return ResponseEntity.noContent().build();
+    }
 }

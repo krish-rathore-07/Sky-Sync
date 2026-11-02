@@ -10,7 +10,7 @@ import {
   FileText,
   FolderOpen,
   MoreVertical,
-  Search,
+  RefreshCw,
   Share2,
   Trash2,
   Upload,
@@ -31,6 +31,8 @@ import {
 function MyFiles() {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [menuFile, setMenuFile] = useState(null)
@@ -38,9 +40,17 @@ function MyFiles() {
   const [deleteLoading, setDeleteLoading] =
     useState(false)
 
-  const fetchFiles = async () => {
+  const fetchFiles = async ({
+    showRefresh = false,
+    notify = false,
+  } = {}) => {
     try {
-      setLoading(true)
+      if (showRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+      }
+
       setError('')
 
       const response = await getMyFiles()
@@ -56,26 +66,58 @@ function MyFiles() {
               ? response.data.files
               : []
 
-      console.log('My files API response:', data)
       setFiles(data)
-    } catch (err) {
-      console.error(
-        'Failed to fetch files:',
-        err
-      )
 
-      setError(
+      if (notify) {
+        toast.success('Your files are up to date.')
+      }
+
+      return data
+    } catch (err) {
+      console.error('Failed to fetch files:', err)
+
+      const message =
         err?.response?.data?.message ||
-          'Unable to load your files.'
-      )
+        'Unable to load your files.'
+
+      setError(message)
+
+      if (notify) {
+        toast.error(message)
+      }
+
+      return null
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
   useEffect(() => {
     fetchFiles()
   }, [])
+
+  // Make the mobile file-action sheet dismissible and keep the page
+  // behind it from scrolling while it is open.
+  useEffect(() => {
+    if (!menuFile) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !deleteLoading) {
+        setMenuFile(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [menuFile, deleteLoading])
 
   const getFileValue = (
     file,
@@ -252,6 +294,11 @@ function MyFiles() {
       '_blank',
       'noopener,noreferrer'
     )
+
+    toast('Opening file in a new tab.', {
+      icon: '↗',
+      duration: 2500,
+    })
   }
 
   const handleDownload = (file) => {
@@ -275,6 +322,11 @@ function MyFiles() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+
+    toast('Opening download link.', {
+      icon: '⬇️',
+      duration: 2500,
+    })
   }
 
   const handleDelete = async (file) => {
@@ -286,6 +338,8 @@ function MyFiles() {
       )
       return
     }
+
+    const loadingToastId = toast.loading('Deleting file...')
 
     try {
       setDeleteLoading(true)
@@ -301,18 +355,16 @@ function MyFiles() {
 
       setMenuFile(null)
 
-      toast.success(
-        'File deleted successfully.'
-      )
+      toast.success('File deleted successfully.', {
+        id: loadingToastId,
+      })
     } catch (err) {
-      console.error(
-        'Failed to delete file:',
-        err
-      )
+      console.error('Failed to delete file:', err)
 
       toast.error(
         err?.response?.data?.message ||
-          'Unable to delete file.'
+          'Unable to delete file.',
+        { id: loadingToastId }
       )
     } finally {
       setDeleteLoading(false)
@@ -320,20 +372,25 @@ function MyFiles() {
   }
 
   return (
-  <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
+    <div className="min-h-screen overflow-x-clip bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-white">
+      <div className="flex min-h-screen w-full">
 
-    <div className="flex min-h-screen">
+        <div className="shrink-0 self-stretch lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:self-start lg:overflow-y-auto [&_aside]:!min-h-screen">
+          <Sidebar
+            mobileOpen={mobileSidebarOpen}
+            onClose={() => setMobileSidebarOpen(false)}
+          />
+        </div>
 
-      <Sidebar />
+        <div className="min-w-0 flex-1">
+          <Navbar
+            onMenuClick={() => setMobileSidebarOpen(true)}
+            searchValue={search}
+            onSearchChange={setSearch}
+          />
 
-      <div className="min-w-0 flex-1">
-
-        <Navbar
-          searchValue={search}
-          onSearchChange={setSearch}
-        />
-
-        <main className="px-4 py-6 sm:px-6 lg:px-8">
+          <main className="w-full px-3 py-5 sm:px-5 sm:py-6 md:px-6 lg:px-8">
+            <div className="mx-auto w-full max-w-7xl">
 
           {/* Header */}
           <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -354,22 +411,31 @@ function MyFiles() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                document
-                  .getElementById(
-                    'upload-section'
-                  )
-                  ?.scrollIntoView({
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:w-auto sm:shrink-0">
+              <button
+                type="button"
+                onClick={() => fetchFiles({ showRefresh: true, notify: true })}
+                disabled={refreshing || loading}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  document.getElementById('upload-section')?.scrollIntoView({
                     behavior: 'smooth',
+                    block: 'start',
                   })
-              }
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-sky-500 px-5 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 transition hover:-translate-y-0.5 hover:bg-sky-600"
-            >
-              <Upload size={17} />
-              Upload File
-            </button>
+                }
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-5 text-sm font-semibold text-white shadow-lg shadow-sky-500/20 transition hover:-translate-y-0.5 hover:bg-sky-600 active:translate-y-0 sm:w-auto"
+              >
+                <Upload size={17} />
+                Upload File
+              </button>
+            </div>
           </div>
 
           {/* Upload */}
@@ -378,7 +444,7 @@ function MyFiles() {
             className="mb-8"
           >
             <UploadBox
-              onUploadSuccess={fetchFiles}
+              onUploadSuccess={() => fetchFiles()}
             />
           </section>
 
@@ -386,50 +452,29 @@ function MyFiles() {
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
 
             {/* Toolbar */}
-            <div className="flex flex-col gap-4 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
+              <div className="min-w-0">
                 <h2 className="text-sm font-semibold">
                   Your files
                 </h2>
 
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {filteredFiles.length}{' '}
-                  {filteredFiles.length === 1
-                    ? 'file'
-                    : 'files'}
+                  {filteredFiles.length === 1 ? 'file' : 'files'}
+                  {search.trim() ? ` matching “${search.trim()}”` : ''}
                 </p>
               </div>
 
-              <div className="relative w-full sm:w-72">
-                <Search
-                  size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-
-                <input
-                  value={search}
-                  onChange={(event) =>
-                    setSearch(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Search files..."
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-9 text-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-500/10 dark:border-slate-700 dark:bg-slate-950"
-                />
-
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSearch('')
-                    }
-                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
+              {search.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-sky-600 transition hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/30"
+                >
+                  <X size={14} />
+                  Clear search
+                </button>
+              )}
             </div>
 
             {/* Loading */}
@@ -500,8 +545,8 @@ function MyFiles() {
               !error &&
               filteredFiles.length > 0 && (
                 <>
-                  <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full min-w-[700px]">
+                  <div className="hidden overflow-x-auto lg:block">
+                    <table className="w-full min-w-[640px]">
                       <thead>
                         <tr className="border-b border-slate-200 text-left dark:border-slate-800">
                           <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -653,7 +698,7 @@ function MyFiles() {
                   </div>
 
                   {/* Mobile cards */}
-                  <div className="divide-y divide-slate-100 md:hidden dark:divide-slate-800">
+                  <div className="divide-y divide-slate-100 lg:hidden dark:divide-slate-800">
                     {filteredFiles.map(
                       (file) => {
                         const Icon =
@@ -697,7 +742,7 @@ function MyFiles() {
                                     file
                                   )
                                 }
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800"
                               >
                                 <MoreVertical
                                   size={18}
@@ -712,7 +757,9 @@ function MyFiles() {
                 </>
               )}
           </section>
-        </main>
+            </div>
+          </main>
+        </div>
       </div>
 
       {/* Action menu */}
@@ -721,14 +768,14 @@ function MyFiles() {
           className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 backdrop-blur-sm sm:items-center"
           onMouseDown={(event) => {
             if (
-              event.target ===
-              event.currentTarget
+              event.target === event.currentTarget &&
+              !deleteLoading
             ) {
               setMenuFile(null)
             }
           }}
         >
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div role="dialog" aria-modal="true" aria-label={`Actions for ${getFileName(menuFile)}`} className="max-h-[min(80vh,560px)] w-full max-w-sm overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
 
             <div className="mb-2 flex items-center justify-between px-2 py-2">
               <p className="max-w-[250px] truncate text-sm font-semibold">
@@ -742,7 +789,8 @@ function MyFiles() {
                 onClick={() =>
                   setMenuFile(null)
                 }
-                className="text-slate-400"
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Close file actions"
               >
                 <X size={18} />
               </button>
@@ -813,7 +861,6 @@ function MyFiles() {
           }
         />
       )}
-    </div>
     </div>
   )
 }

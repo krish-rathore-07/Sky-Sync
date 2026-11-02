@@ -81,7 +81,8 @@ public class SecurityConfig {
                         ).permitAll()
 
                         .requestMatchers(
-                                "/api/auth/change-password"
+                                "/api/auth/change-password",
+                                "/api/auth/delete-account"
                         ).authenticated()
 
                         // -----------------------------------------

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  Search,
   Link2,
   Copy,
   ExternalLink,
@@ -112,6 +111,7 @@ const isShareExpired = (share) => {
 
 function SharedFiles() {
   const [shares, setShares] = useState([])
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
@@ -158,6 +158,10 @@ function SharedFiles() {
       }))
 
       setShares(normalizedShares)
+
+      if (isManualRefresh) {
+        toast.success('Shared links are up to date.')
+      }
     } catch (error) {
       console.error(
         'Failed to load shared files:',
@@ -248,10 +252,16 @@ function SharedFiles() {
       '_blank',
       'noopener,noreferrer'
     )
+
+    toast('Opening share link in a new tab.', {
+      icon: '↗',
+      duration: 2500,
+    })
   }
 
   const revokeShare = async (share) => {
     setRevokingToken(share.shareToken)
+    const loadingToastId = toast.loading('Revoking share link...')
 
     try {
       await revokeShareLink(share.shareToken)
@@ -260,19 +270,42 @@ function SharedFiles() {
         current.filter((item) => item.shareToken !== share.shareToken)
       )
 
-      toast.success('Share link revoked successfully.')
+      toast.success('Share link revoked successfully.', {
+        id: loadingToastId,
+      })
       setConfirmShare(null)
     } catch (error) {
       console.error('Failed to revoke share:', error)
 
       toast.error(
         error.response?.data?.message ||
-          'Could not revoke this share link.'
+          'Could not revoke this share link.',
+        { id: loadingToastId }
       )
     } finally {
       setRevokingToken(null)
     }
   }
+
+  useEffect(() => {
+    if (!confirmShare) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !revokingToken) {
+        setConfirmShare(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [confirmShare, revokingToken])
 
   const tabs = [
     { id: 'all', label: 'All links', count: shares.length },
@@ -281,14 +314,23 @@ function SharedFiles() {
   ]
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-[#080d1b] dark:text-slate-100">
-      <div className="flex min-h-screen">
-        <Sidebar />
+    <div className="min-h-screen w-full overflow-x-clip bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-[#080d1b] dark:text-slate-100">
+      <div className="flex min-h-screen w-full">
+        <div className="shrink-0 self-stretch lg:sticky lg:top-0 lg:h-screen lg:max-h-screen lg:self-start lg:overflow-y-auto [&_aside]:!min-h-screen">
+          <Sidebar
+            mobileOpen={mobileSidebarOpen}
+            onClose={() => setMobileSidebarOpen(false)}
+          />
+        </div>
 
         <div className="min-w-0 flex-1">
-          <Navbar />
+          <Navbar
+            onMenuClick={() => setMobileSidebarOpen(true)}
+            searchValue={search}
+            onSearchChange={setSearch}
+          />
 
-          <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main className="mx-auto w-full max-w-[1400px] min-w-0 px-3 py-5 sm:px-5 sm:py-6 md:px-6 lg:px-8 lg:py-8">
             {/* Header */}
            <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
               <div>
@@ -307,12 +349,12 @@ function SharedFiles() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                 <button
                   type="button"
                   onClick={() => loadShares(true)}
                   disabled={refreshing || loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                 >
                   <RefreshCw
                     size={16}
@@ -323,7 +365,7 @@ function SharedFiles() {
 
                 <Link
                   to="/dashboard/files"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 sm:w-auto"
                 >
                   <Share2 size={16} />
                   My Files
@@ -370,29 +412,14 @@ function SharedFiles() {
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <div className="relative min-w-0 sm:min-w-[260px]">
-                      <Search
-                        size={17}
-                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-
-                      <input
-                        type="search"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search shared files..."
-                        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500"
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+                  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="flex w-full min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 sm:w-auto dark:bg-slate-800">
                       {tabs.map((tab) => (
                         <button
                           key={tab.id}
                           type="button"
                           onClick={() => setFilter(tab.id)}
-                          className={`flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition sm:flex-none ${
+                          className={`min-h-10 flex-1 whitespace-nowrap rounded-lg px-2.5 py-2 text-xs font-semibold transition sm:flex-none sm:px-3 ${
                             filter === tab.id
                               ? 'bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-indigo-300'
                               : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -462,7 +489,7 @@ function SharedFiles() {
               ) : (
                 <>
                   {/* Desktop table */}
-                  <div className="hidden overflow-x-auto md:block">
+                  <div className="hidden overflow-x-auto xl:block">
                     <table className="w-full text-left">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
@@ -490,7 +517,7 @@ function SharedFiles() {
                   </div>
 
                   {/* Mobile cards */}
-                  <div className="grid gap-3 p-4 md:hidden">
+                  <div className="grid gap-3 p-3 sm:p-4 xl:hidden">
                     {filteredShares.map((share) => (
                       <ShareCard
                         key={share.id || share.shareToken}
@@ -505,7 +532,7 @@ function SharedFiles() {
               )}
             </section>
 
-            <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-slate-500 dark:text-slate-400 dark:text-slate-500">
+            <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-slate-500 dark:text-slate-400">
               <ShieldCheck size={14} />
               Only you can manage the share links belonging to your files.
             </p>
@@ -516,7 +543,7 @@ function SharedFiles() {
       {/* Revoke confirmation */}
       {confirmShare && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-4"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !revokingToken) {
               setConfirmShare(null)
@@ -527,7 +554,7 @@ function SharedFiles() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="revoke-dialog-title"
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+            className="my-auto max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6 dark:border-slate-800 dark:bg-slate-900"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">
               <AlertCircle size={24} />
@@ -546,12 +573,12 @@ function SharedFiles() {
               no longer be able to access the shared file.
             </p>
 
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
               <button
                 type="button"
                 disabled={Boolean(revokingToken)}
                 onClick={() => setConfirmShare(null)}
-                className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="min-h-11 flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
               >
                 Cancel
               </button>
@@ -560,7 +587,7 @@ function SharedFiles() {
                 type="button"
                 disabled={Boolean(revokingToken)}
                 onClick={() => revokeShare(confirmShare)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
               >
                 {revokingToken ? (
                   <LoaderCircle size={16} className="animate-spin" />
@@ -713,7 +740,7 @@ function ShareRow({ share, onCopy, onOpen, onRevoke }) {
 
 function ShareCard({ share, onCopy, onOpen, onRevoke }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+    <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 dark:border-slate-800 dark:bg-slate-950/50">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <FileIdentity share={share} />
@@ -752,11 +779,11 @@ function ShareCard({ share, onCopy, onOpen, onRevoke }) {
         </div>
       </div>
 
-      <div className="mt-4 flex gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
         <button
           type="button"
           onClick={() => onCopy(share)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2.5 text-xs font-semibold transition hover:bg-slate-50 sm:px-3 dark:border-slate-700 dark:hover:bg-slate-800"
         >
           <Copy size={14} />
           Copy link
@@ -766,7 +793,7 @@ function ShareCard({ share, onCopy, onOpen, onRevoke }) {
           type="button"
           onClick={() => onOpen(share)}
           disabled={isShareExpired(share)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-2.5 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
         >
           <ExternalLink size={14} />
           Open
@@ -776,7 +803,7 @@ function ShareCard({ share, onCopy, onOpen, onRevoke }) {
           type="button"
           onClick={() => onRevoke(share)}
           aria-label="Revoke share link"
-          className="flex items-center justify-center rounded-lg border border-red-200 px-3 py-2.5 text-red-600 transition hover:bg-red-50 dark:border-red-500/20 dark:text-red-400 dark:hover:bg-red-500/10"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-red-200 text-red-600 transition hover:bg-red-50 dark:border-red-500/20 dark:text-red-400 dark:hover:bg-red-500/10"
         >
           <Trash2 size={15} />
         </button>
@@ -793,7 +820,7 @@ function ActionButton({ children, title, onClick, disabled, danger }) {
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
-      className={`flex h-9 w-9 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`flex h-10 w-10 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-40 ${
         danger
           ? 'border-red-100 text-red-500 hover:border-red-200 hover:bg-red-50 dark:border-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10'
           : 'border-slate-200 text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300'

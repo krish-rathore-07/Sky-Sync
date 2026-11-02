@@ -1,3 +1,4 @@
+
 import {
   createContext,
   useContext,
@@ -8,6 +9,7 @@ import {
 import {
   loginUser,
   googleLoginUser,
+  deleteAccount as deleteAccountApi,
 } from '../services/authservice.js'
 
 const AuthContext = createContext(null)
@@ -34,7 +36,7 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  // Shared function for saving authentication data
+  // Save authentication data after login.
   const saveAuthData = (data) => {
     localStorage.setItem('skysync-token', data.token)
 
@@ -54,18 +56,19 @@ export function AuthProvider({ children }) {
     return data
   }
 
-  // Existing email/password login
+  // Email/password login.
   const login = async (credentials) => {
     const data = await loginUser(credentials)
     return saveAuthData(data)
   }
 
-  // New Google login
+  // Google login.
   const googleLogin = async (credential) => {
     const data = await googleLoginUser(credential)
     return saveAuthData(data)
   }
 
+  // Clear local authentication data.
   const logout = () => {
     localStorage.removeItem('skysync-token')
     localStorage.removeItem('skysync-user')
@@ -74,6 +77,15 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // Permanently delete the authenticated account.
+  const deleteAccount = async () => {
+    await deleteAccountApi()
+
+    // Clear local authentication only after the API succeeds.
+    logout()
+  }
+
+  // Update the saved user information.
   const updateUser = (updatedData) => {
     setUser((currentUser) => {
       if (!currentUser) return currentUser
@@ -102,6 +114,7 @@ export function AuthProvider({ children }) {
         login,
         googleLogin,
         logout,
+        deleteAccount,
         updateUser,
       }}
     >
@@ -121,3 +134,4 @@ export function useAuth() {
 
   return context
 }
+
